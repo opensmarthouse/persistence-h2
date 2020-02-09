@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.openhab.addons.bundles</groupId>
+		<artifactId>org.openhab.addons.reactor.bundles</artifactId>
+		<version>2.5.2-SNAPSHOT</version>
+	</parent>
+
+	<artifactId>com.zsmartsystems.openhab.persistence.h2</artifactId>
+	<packaging>jar</packaging>
+
+	<name>openHAB Add-ons :: Bundles :: Persistence Service :: H2 Database</name>
+
+	<dependencies>
+		<dependency>
+			<groupId>com.h2database</groupId>
+			<artifactId>h2</artifactId>
+			<version>1.4.200</version>
+		</dependency>
+
+		<dependency>
+			<groupId>com.nanosai</groupId>
+			<artifactId>rion-ops</artifactId>
+			<version>0.9.1</version>
+		</dependency>
+	</dependencies>
+
+</project>
