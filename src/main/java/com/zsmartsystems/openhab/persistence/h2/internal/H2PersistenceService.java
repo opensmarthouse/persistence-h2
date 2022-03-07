@@ -7,7 +7,9 @@
  */
 package com.zsmartsystems.openhab.persistence.h2.internal;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.file.Paths;
 import java.security.InvalidParameterException;
 import java.sql.Connection;
@@ -19,44 +21,48 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.temporal.ChronoField;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.eclipse.smarthome.config.core.ConfigConstants;
-import org.eclipse.smarthome.core.i18n.TranslationProvider;
-import org.eclipse.smarthome.core.items.Item;
-import org.eclipse.smarthome.core.items.ItemNotFoundException;
-import org.eclipse.smarthome.core.items.ItemRegistry;
-import org.eclipse.smarthome.core.library.types.DateTimeType;
-import org.eclipse.smarthome.core.library.types.DecimalType;
-import org.eclipse.smarthome.core.library.types.HSBType;
-import org.eclipse.smarthome.core.library.types.OnOffType;
-import org.eclipse.smarthome.core.library.types.OpenClosedType;
-import org.eclipse.smarthome.core.library.types.PlayPauseType;
-import org.eclipse.smarthome.core.library.types.PointType;
-import org.eclipse.smarthome.core.library.types.RawType;
-import org.eclipse.smarthome.core.library.types.RewindFastforwardType;
-import org.eclipse.smarthome.core.library.types.StringListType;
-import org.eclipse.smarthome.core.library.types.StringType;
-import org.eclipse.smarthome.core.library.types.UpDownType;
-import org.eclipse.smarthome.core.persistence.FilterCriteria;
-import org.eclipse.smarthome.core.persistence.FilterCriteria.Ordering;
-import org.eclipse.smarthome.core.persistence.HistoricItem;
-import org.eclipse.smarthome.core.persistence.ModifiablePersistenceService;
-import org.eclipse.smarthome.core.persistence.PersistenceItemInfo;
-import org.eclipse.smarthome.core.persistence.PersistenceService;
-import org.eclipse.smarthome.core.persistence.QueryablePersistenceService;
-import org.eclipse.smarthome.core.types.State;
-import org.eclipse.smarthome.core.types.TypeParser;
-import org.eclipse.smarthome.core.types.UnDefType;
+import org.msgpack.core.MessageBufferPacker;
+import org.msgpack.core.MessagePack;
+import org.msgpack.core.buffer.MessageBuffer;
+import org.openhab.core.config.core.ConfigConstants;
+import org.openhab.core.i18n.TranslationProvider;
+import org.openhab.core.items.Item;
+import org.openhab.core.items.ItemNotFoundException;
+import org.openhab.core.items.ItemRegistry;
+import org.openhab.core.library.types.DateTimeType;
+import org.openhab.core.library.types.DecimalType;
+import org.openhab.core.library.types.HSBType;
+import org.openhab.core.library.types.OnOffType;
+import org.openhab.core.library.types.OpenClosedType;
+import org.openhab.core.library.types.PlayPauseType;
+import org.openhab.core.library.types.PointType;
+import org.openhab.core.library.types.RawType;
+import org.openhab.core.library.types.RewindFastforwardType;
+import org.openhab.core.library.types.StringListType;
+import org.openhab.core.library.types.StringType;
+import org.openhab.core.library.types.UpDownType;
+import org.openhab.core.persistence.FilterCriteria;
+import org.openhab.core.persistence.FilterCriteria.Ordering;
+import org.openhab.core.persistence.HistoricItem;
+import org.openhab.core.persistence.ModifiablePersistenceService;
+import org.openhab.core.persistence.PersistenceItemInfo;
+import org.openhab.core.persistence.PersistenceService;
+import org.openhab.core.persistence.QueryablePersistenceService;
+import org.openhab.core.persistence.strategy.PersistenceStrategy;
+import org.openhab.core.types.State;
+import org.openhab.core.types.TypeParser;
+import org.openhab.core.types.UnDefType;
+import org.openhab.core.types.registry.TypeRegistry;
 import org.osgi.framework.BundleContext;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
@@ -80,8 +86,8 @@ public class H2PersistenceService implements ModifiablePersistenceService {
     }
 
     private static class Schema {
-        public static final String ITEM = "ESH_ITEM";
-        public static final String METAINFO = "ESH_ITEM";
+        public static final String ITEM = "OSH_ITEM";
+        public static final String METAINFO = "OSH_ITEM";
 
     }
 
@@ -108,8 +114,13 @@ public class H2PersistenceService implements ModifiablePersistenceService {
 
     private final String h2Url = "jdbc:h2:file:";
 
+    private MessageBufferPacker messageBufferPacker = MessagePack.newDefaultBufferPacker();
+
     @Nullable
     protected ItemRegistry itemRegistry;
+
+    @Nullable
+    protected TypeRegistry typeRegistry;
 
     @Nullable
     private TranslationProvider i18nProvider;
@@ -121,7 +132,7 @@ public class H2PersistenceService implements ModifiablePersistenceService {
     @Nullable
     private BundleContext bundleContext;
 
-    private final Map<String, List<Class<? extends State>>> stateClasses = new HashMap<>();
+    // private final Map<String, List<Class<? extends State>>> stateClasses = new HashMap<>();
 
     H2PersistenceService() {
         // Ensure that known types are accessible by the classloader
@@ -166,6 +177,15 @@ public class H2PersistenceService implements ModifiablePersistenceService {
 
     public void unsetItemRegistry(ItemRegistry itemRegistry) {
         this.itemRegistry = null;
+    }
+
+    @Reference
+    public void setTypeRegistry(TypeRegistry typeRegistry) {
+        this.typeRegistry = typeRegistry;
+    }
+
+    public void unsetTypeRegistry(TypeRegistry typeRegistry) {
+        this.typeRegistry = null;
     }
 
     @Reference
@@ -250,7 +270,7 @@ public class H2PersistenceService implements ModifiablePersistenceService {
             st.setFetchSize(50);
 
             try (final ResultSet rs = st.executeQuery(queryString)) {
-
+                // TODO: This won't work with binary serialisation!
                 Set<PersistenceItemInfo> items = new HashSet<PersistenceItemInfo>();
                 while (rs.next()) {
                     try (final Statement stTimes = connection.createStatement()) {
@@ -376,7 +396,7 @@ public class H2PersistenceService implements ModifiablePersistenceService {
             String url = h2Url + databaseFileName;
 
             // Disable logging and defrag on shutdown
-            url += ";TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;DEFRAG_ALWAYS=true;";
+            url += ";TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;DEFRAG_ALWAYS=true;COMPRESS=TRUE;";
             connection = DriverManager.getConnection(url);
 
             logger.info("{}: Connected to H2 database {}", getId(), databaseFileName);
@@ -480,7 +500,7 @@ public class H2PersistenceService implements ModifiablePersistenceService {
                 st.setTimestamp(++i, new Timestamp(filter.getBeginDate().getTime()));
             }
             if (filterWhere.end) {
-                st.setTimestamp(++i, new Timestamp(filter.getEndDate().getTime()));
+                st.setTimestamp(++i, Timestamp.valueOf(filter.getEndDateZoned().toInstant()));
             }
 
             // Turn use of the cursor on.
@@ -561,11 +581,22 @@ public class H2PersistenceService implements ModifiablePersistenceService {
     private boolean insert(final String tableName, final Date date, final State state) {
         final String sql = String.format("INSERT INTO %s (%s, %s, %s) VALUES(?,?,?);", tableName, Column.TIME,
                 Column.CLAZZ, Column.VALUE);
+
         try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
+
+           MessageBuffer buffer= messageBufferPacker.toMessageBuffer();
+           buffer.
+
+
+            byte[] dest = new byte[128];
+            int length = writer.writeCyclic(state, 1, dest, 0);
+            InputStream dataStream = new ByteArrayInputStream(Arrays.copyOfRange(dest, 0, length));
+
             int i = 0;
             stmt.setTimestamp(++i, new Timestamp(date.getTime()));
             stmt.setString(++i, getStateClassKey(state.getClass()));
-            stmt.setString(++i, state.toString());
+            // stmt.setString(++i, state.toString());
+            stmt.setBinaryStream(++i, dataStream);
             stmt.executeUpdate();
             return true;
         } catch (final SQLException ex) {
@@ -580,7 +611,8 @@ public class H2PersistenceService implements ModifiablePersistenceService {
         try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
             int i = 0;
             stmt.setString(++i, getStateClassKey(state.getClass()));
-            stmt.setString(++i, state.toString());
+            // stmt.setString(++i, state.toString());
+            stmt.setBinaryStream(++i, null);
             stmt.setTimestamp(++i, new Timestamp(date.getTime()));
             stmt.executeUpdate();
             return true;
@@ -588,5 +620,10 @@ public class H2PersistenceService implements ModifiablePersistenceService {
             logger.trace("{}: update failed; statement '{}'", getId(), sql, ex);
             return false;
         }
+    }
+
+    @Override
+    public List<PersistenceStrategy> getDefaultStrategies() {
+        return Collections.emptyList();
     }
 }

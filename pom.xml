@@ -1,18 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns="http://maven.apache.org/POM/4.0.0"
 	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
-	<parent>
-		<groupId>org.openhab.addons.bundles</groupId>
-		<artifactId>org.openhab.addons.reactor.bundles</artifactId>
-		<version>2.5.2-SNAPSHOT</version>
-	</parent>
+	<groupId>org.opensmarthouse.addons.bundles</groupId>
+	<version>1.0.0-SNAPSHOT</version>
 
-	<artifactId>com.zsmartsystems.openhab.persistence.h2</artifactId>
+	<artifactId>org.opensmarthouse.persistence.h2</artifactId>
 	<packaging>jar</packaging>
 
-	<name>openHAB Add-ons :: Bundles :: Persistence Service :: H2 Database</name>
+	<name>OpenSmartHouse Add-ons :: Bundles :: Persistence Service :: H2 Database</name>
 
 	<dependencies>
 		<dependency>
@@ -20,12 +18,50 @@
 			<artifactId>h2</artifactId>
 			<version>1.4.200</version>
 		</dependency>
+		
+<dependency>
+    <groupId>org.msgpack</groupId>
+    <artifactId>msgpack-core</artifactId>
+    <version>0.8.20</version>
+</dependency>
+		  
+		<dependency>
+			<groupId>org.opensmarthouse.core.bundles</groupId>
+			<artifactId>org.opensmarthouse.core</artifactId>
+			<version>${project.version}</version>
+		</dependency>
 
 		<dependency>
-			<groupId>com.nanosai</groupId>
-			<artifactId>rion-ops</artifactId>
-			<version>0.9.1</version>
+			<groupId>org.opensmarthouse.core.bundles</groupId>
+			<artifactId>org.opensmarthouse.core.persistence</artifactId>
+			<version>${project.version}</version>
 		</dependency>
+
+		<dependency>
+			<groupId>org.opensmarthouse.core.bom</groupId>
+			<artifactId>org.opensmarthouse.core.bom.compile</artifactId>
+			<version>${project.version}</version>
+			<type>pom</type>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.opensmarthouse.core.bom</groupId>
+			<artifactId>org.opensmarthouse.core.bom.opensmarthouse-core</artifactId>
+			<version>${project.version}</version>
+			<type>pom</type>
+			<scope>provided</scope>
+		</dependency>
+
 	</dependencies>
 
+	<repositories>
+		<repository>
+			<id>opensmarthouse-releases</id>
+			<url>http://repo.cd-jackson.com/repository/maven-releases/</url>
+		</repository>
+		<repository>
+			<id>opensmarthouse-snapshots</id>
+			<url>http://repo.cd-jackson.com/repository/maven-snapshots/</url>
+		</repository>
+	</repositories>
 </project>

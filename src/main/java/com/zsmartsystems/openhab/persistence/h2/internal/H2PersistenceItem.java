@@ -9,7 +9,7 @@ package com.zsmartsystems.openhab.persistence.h2.internal;
 
 import java.util.Date;
 
-import org.eclipse.smarthome.core.persistence.PersistenceItemInfo;
+import org.openhab.core.persistence.PersistenceItemInfo;
 
 /**
  * This is a class used to return item information from the H2 database.

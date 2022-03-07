@@ -10,8 +10,9 @@ package com.zsmartsystems.openhab.persistence.h2.internal;
 import java.text.DateFormat;
 import java.util.Date;
 
-import org.eclipse.smarthome.core.persistence.HistoricItem;
-import org.eclipse.smarthome.core.types.State;
+import org.eclipse.jdt.annotation.Nullable;
+import org.openhab.core.persistence.HistoricItem;
+import org.openhab.core.types.State;
 
 /**
  * This is a Java bean used to return historic items from a SQL database.
@@ -31,17 +32,16 @@ public class H2HistoricItem implements HistoricItem {
         this.timestamp = timestamp;
     }
 
-    @Override
     public String getName() {
         return name;
     }
 
-    @Override
+    @Nullable
     public State getState() {
         return state;
     }
 
-    @Override
+    @Nullable
     public Date getTimestamp() {
         return timestamp;
     }
