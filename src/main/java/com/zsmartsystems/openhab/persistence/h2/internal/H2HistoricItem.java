@@ -8,6 +8,7 @@
 package com.zsmartsystems.openhab.persistence.h2.internal;
 
 import java.text.DateFormat;
+import java.time.ZonedDateTime;
 import java.util.Date;
 
 import org.eclipse.jdt.annotation.Nullable;
@@ -24,9 +25,9 @@ public class H2HistoricItem implements HistoricItem {
 
     final private String name;
     final private State state;
-    final private Date timestamp;
+    final private ZonedDateTime timestamp;
 
-    public H2HistoricItem(String name, State state, Date timestamp) {
+    public H2HistoricItem(String name, State state, ZonedDateTime timestamp) {
         this.name = name;
         this.state = state;
         this.timestamp = timestamp;
@@ -36,13 +37,11 @@ public class H2HistoricItem implements HistoricItem {
         return name;
     }
 
-    @Nullable
     public State getState() {
         return state;
     }
 
-    @Nullable
-    public Date getTimestamp() {
+    public ZonedDateTime getTimestamp() {
         return timestamp;
     }
 
