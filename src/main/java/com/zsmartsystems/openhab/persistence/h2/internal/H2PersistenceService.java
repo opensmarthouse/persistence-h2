@@ -7,9 +7,7 @@
  */
 package com.zsmartsystems.openhab.persistence.h2.internal;
 
-import java.io.ByteArrayInputStream;
 import java.io.File;
-import java.io.InputStream;
 import java.nio.file.Paths;
 import java.security.InvalidParameterException;
 import java.sql.Connection;
@@ -21,20 +19,19 @@ import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.temporal.ChronoField;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
-
 import org.eclipse.jdt.annotation.NonNullByDefault;
 import org.eclipse.jdt.annotation.Nullable;
-import org.msgpack.core.MessageBufferPacker;
-import org.msgpack.core.MessagePack;
-import org.msgpack.core.buffer.MessageBuffer;
-import org.openhab.core.config.core.ConfigConstants;
+import org.h2.Driver;
+import org.openhab.core.OpenHAB;
+import org.openhab.core.i18n.TimeZoneProvider;
 import org.openhab.core.i18n.TranslationProvider;
 import org.openhab.core.items.Item;
 import org.openhab.core.items.ItemNotFoundException;
@@ -62,8 +59,8 @@ import org.openhab.core.persistence.strategy.PersistenceStrategy;
 import org.openhab.core.types.State;
 import org.openhab.core.types.TypeParser;
 import org.openhab.core.types.UnDefType;
-import org.openhab.core.types.registry.TypeRegistry;
 import org.osgi.framework.BundleContext;
+import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
 import org.slf4j.Logger;
@@ -104,8 +101,8 @@ public class H2PersistenceService implements ModifiablePersistenceService {
         public String prepared;
 
         public FilterWhere(final FilterCriteria filter) {
-            this.begin = filter.getBeginDateZoned() != null;
-            this.end = filter.getEndDateZoned() != null;
+            this.begin = filter.getBeginDate() != null;
+            this.end = filter.getEndDate() != null;
             prepared = "";
         }
     }
@@ -114,27 +111,28 @@ public class H2PersistenceService implements ModifiablePersistenceService {
 
     private final String h2Url = "jdbc:h2:file:";
 
-    private MessageBufferPacker messageBufferPacker = MessagePack.newDefaultBufferPacker();
+    private final Map<String, List<Class<? extends State>>> stateClasses = new HashMap<>();
+    private final List<String> itemCache = new ArrayList<>();
+    protected final ItemRegistry itemRegistry;
+    protected final TimeZoneProvider timeZoneProvider;
 
-    @Nullable
-    protected ItemRegistry itemRegistry;
-
-    @Nullable
-    protected TypeRegistry typeRegistry;
+    //private MessageBufferPacker messageBufferPacker = MessagePack.newDefaultBufferPacker();
 
     @Nullable
     private TranslationProvider i18nProvider;
 
     @Nullable
     protected Connection connection;
-    private final List<String> itemCache = new ArrayList<>();
 
     @Nullable
     private BundleContext bundleContext;
 
-    // private final Map<String, List<Class<? extends State>>> stateClasses = new HashMap<>();
 
-    H2PersistenceService() {
+    @Activate
+    public H2PersistenceService(@Reference ItemRegistry itemRegistry, @Reference TimeZoneProvider timeZoneProvider) {
+        this.itemRegistry = itemRegistry;
+        this.timeZoneProvider = timeZoneProvider;
+
         // Ensure that known types are accessible by the classloader
         addStateClass(DateTimeType.class);
         addStateClass(DecimalType.class);
@@ -171,24 +169,6 @@ public class H2PersistenceService implements ModifiablePersistenceService {
     }
 
     @Reference
-    public void setItemRegistry(ItemRegistry itemRegistry) {
-        this.itemRegistry = itemRegistry;
-    }
-
-    public void unsetItemRegistry(ItemRegistry itemRegistry) {
-        this.itemRegistry = null;
-    }
-
-    @Reference
-    public void setTypeRegistry(TypeRegistry typeRegistry) {
-        this.typeRegistry = typeRegistry;
-    }
-
-    public void unsetTypeRegistry(TypeRegistry typeRegistry) {
-        this.typeRegistry = null;
-    }
-
-    @Reference
     public void setI18nProvider(TranslationProvider i18nProvider) {
         this.i18nProvider = i18nProvider;
     }
@@ -208,7 +188,7 @@ public class H2PersistenceService implements ModifiablePersistenceService {
     }
 
     @Override
-    public void store(Item item, String alias) {
+    public void store(Item item, @Nullable String alias) {
         store(item);
     }
 
@@ -325,11 +305,11 @@ public class H2PersistenceService implements ModifiablePersistenceService {
             int i = 0;
             if (filterWhere.begin) {
                 st.setTimestamp(++i,
-                        new Timestamp(filter.getBeginDateZoned().getLong(ChronoField.INSTANT_SECONDS) * 1000));
+                        new Timestamp(filter.getBeginDate().getLong(ChronoField.INSTANT_SECONDS) * 1000));
             }
             if (filterWhere.end) {
                 st.setTimestamp(++i,
-                        new Timestamp(filter.getEndDateZoned().getLong(ChronoField.INSTANT_SECONDS) * 1000));
+                        new Timestamp(filter.getEndDate().getLong(ChronoField.INSTANT_SECONDS) * 1000));
             }
 
             st.execute(queryString);
@@ -374,15 +354,17 @@ public class H2PersistenceService implements ModifiablePersistenceService {
      */
     protected boolean connectToDatabase() {
         // First, check if we're connected
-        if (isConnected() == true) {
+        if (isConnected()) {
             return true;
         }
 
         // We're not connected, so connect
         try {
+            // force loading of driver class into our classloader!
+            Driver driver = new Driver();
             logger.info("{}: Connecting to database", getId());
 
-            final String folderName = Paths.get(ConfigConstants.getUserDataFolder(), getId()).toString();
+            final String folderName = Paths.get(OpenHAB.getUserDataFolder(), getId()).toString();
 
             // Create path for serialization.
             final File folder = new File(folderName);
@@ -396,7 +378,7 @@ public class H2PersistenceService implements ModifiablePersistenceService {
             String url = h2Url + databaseFileName;
 
             // Disable logging and defrag on shutdown
-            url += ";TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;DEFRAG_ALWAYS=true;COMPRESS=TRUE;";
+            url += ";AUTO_RECONNECT=TRUE;TRACE_LEVEL_FILE=0;TRACE_LEVEL_SYSTEM_OUT=0;DEFRAG_ALWAYS=true;FILE_LOCK=SOCKET";
             connection = DriverManager.getConnection(url);
 
             logger.info("{}: Connected to H2 database {}", getId(), databaseFileName);
@@ -497,10 +479,10 @@ public class H2PersistenceService implements ModifiablePersistenceService {
         try (final PreparedStatement st = connection.prepareStatement(queryString)) {
             int i = 0;
             if (filterWhere.begin) {
-                st.setTimestamp(++i, new Timestamp(filter.getBeginDate().getTime()));
+                st.setTimestamp(++i, Timestamp.valueOf(filter.getBeginDate().toLocalDateTime()));
             }
             if (filterWhere.end) {
-                st.setTimestamp(++i, Timestamp.valueOf(filter.getEndDateZoned().toInstant()));
+                st.setTimestamp(++i, Timestamp.valueOf(filter.getEndDate().toLocalDateTime()));
             }
 
             // Turn use of the cursor on.
@@ -549,7 +531,8 @@ public class H2PersistenceService implements ModifiablePersistenceService {
                         continue;
                     }
 
-                    final H2HistoricItem sqlItem = new H2HistoricItem(itemName, state, time);
+                    final H2HistoricItem sqlItem = new H2HistoricItem(itemName, state, time.toInstant()
+                        .atZone(timeZoneProvider.getTimeZone()));
                     items.add(sqlItem);
                 }
                 return items;
@@ -583,20 +566,16 @@ public class H2PersistenceService implements ModifiablePersistenceService {
                 Column.CLAZZ, Column.VALUE);
 
         try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
-
-           MessageBuffer buffer= messageBufferPacker.toMessageBuffer();
-           buffer.
-
-
-            byte[] dest = new byte[128];
-            int length = writer.writeCyclic(state, 1, dest, 0);
-            InputStream dataStream = new ByteArrayInputStream(Arrays.copyOfRange(dest, 0, length));
+//           MessageBuffer buffer= messageBufferPacker.toMessageBuffer();
+//            byte[] dest = new byte[128];
+//            int length = writer.writeCyclic(state, 1, dest, 0);
+//            InputStream dataStream = new ByteArrayInputStream(Arrays.copyOfRange(dest, 0, length));
 
             int i = 0;
             stmt.setTimestamp(++i, new Timestamp(date.getTime()));
             stmt.setString(++i, getStateClassKey(state.getClass()));
-            // stmt.setString(++i, state.toString());
-            stmt.setBinaryStream(++i, dataStream);
+             stmt.setString(++i, state.toString());
+//            stmt.setBinaryStream(++i, dataStream);
             stmt.executeUpdate();
             return true;
         } catch (final SQLException ex) {
@@ -611,8 +590,8 @@ public class H2PersistenceService implements ModifiablePersistenceService {
         try (final PreparedStatement stmt = connection.prepareStatement(sql)) {
             int i = 0;
             stmt.setString(++i, getStateClassKey(state.getClass()));
-            // stmt.setString(++i, state.toString());
-            stmt.setBinaryStream(++i, null);
+            stmt.setString(++i, state.toString());
+//            stmt.setBinaryStream(++i, null);
             stmt.setTimestamp(++i, new Timestamp(date.getTime()));
             stmt.executeUpdate();
             return true;
